@@ -1,0 +1,19 @@
+MON AUTHENTICATOR - PWA (v2)
+
+CONTENU : index.html, sw.js, manifest.webmanifest, icon-192.png, icon-512.png
+(optionnel) jsQR.js : https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js
+  -> enregistrez ce fichier sous le nom jsQR.js a cote de index.html pour lire
+     les QR hors ligne sur les navigateurs sans BarcodeDetector (Firefox, Safari).
+
+HEBERGEMENT (HTTPS obligatoire pour l'installation, la camera et le mode hors ligne)
+ - Netlify : app.netlify.com/drop, glissez le dossier.
+ - Cloudflare Pages / GitHub Pages : publiez le dossier tel quel.
+
+INSTALLATION SUR TELEPHONE
+ - Android (Chrome) : menu > "Installer l'application".
+ - iPhone (Safari) : Partager > "Sur l'ecran d'accueil".
+
+PREMIER USAGE
+ 1. Creez le mot de passe maitre, puis notez la cle de recuperation.
+ 2. Ajoutez un compte peu important pour tester, comparez avec votre ancien authenticator.
+ 3. Faites une sauvegarde (menu > Sauvegarder) et rangez-la a deux endroits.

@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#2563eb">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Mon Authenticator</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--tx:#1a1d23;--mut:#6b7280;--acc:#2563eb;--bd:#e5e7eb;--ok:#16a34a;--err:#dc2626;--warn:#d97706}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#181b22;--tx:#e8eaed;--mut:#8b93a1;--acc:#60a5fa;--bd:#2a2f3a}}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--tx);min-height:100vh}
+.wrap{max-width:560px;margin:0 auto;padding:16px}
+header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+h1{font-size:20px;margin:0}
+button{font:inherit;cursor:pointer;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:10px;padding:8px 12px}
+button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+button.dng{color:var(--err)}
+button.lnk{border:0;background:none;color:var(--acc);padding:4px 0;text-decoration:underline}
+button:disabled{opacity:.5}
+input,select,textarea{font:inherit;width:100%;padding:10px;border-radius:10px;border:1px solid var(--bd);background:var(--card);color:var(--tx)}
+input[type=checkbox]{width:auto}
+label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
+.row{display:flex;gap:8px;align-items:center}
+.row>*{flex:1}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:10px}
+.acc{display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;-webkit-user-select:none}
+.acc .n{font-size:13px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60vw}
+.acc .i{font-weight:600}
+.code{font-size:30px;font-weight:700;letter-spacing:3px;font-variant-numeric:tabular-nums;color:var(--acc)}
+.code.low{color:var(--warn)}
+.ring{width:34px;height:34px;transform:rotate(-90deg)}
+.ring circle{fill:none;stroke-width:4}
+.ring .bg{stroke:var(--bd)}.ring .fg{stroke:var(--acc);stroke-linecap:round}
+.mut{color:var(--mut);font-size:13px}
+.msg{font-size:13px;margin-top:8px}.err{color:var(--err)}.ok{color:var(--ok)}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;z-index:10}
+.modal>div{background:var(--bg);width:100%;max-width:560px;max-height:92vh;overflow:auto;border-radius:18px 18px 0 0;padding:16px}
+.hide{display:none!important}
+.center{text-align:center;padding:40px 0}
+.tabs{display:flex;gap:6px;margin-bottom:8px}.tabs button{flex:1;padding:8px 4px}.tabs .on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111;color:#fff;padding:8px 14px;border-radius:20px;font-size:14px;z-index:20}
+.banner{background:#fef3c7;color:#78350f;border:1px solid #fcd34d;border-radius:12px;padding:10px 12px;margin-bottom:10px;font-size:14px}
+.rec{font-family:ui-monospace,Menlo,monospace;font-size:18px;letter-spacing:1px;word-break:break-all;text-align:center;padding:14px;border:2px dashed var(--acc);border-radius:12px;margin:10px 0;user-select:all}
+video{width:100%;border-radius:12px;background:#000;max-height:50vh}
+.star{background:none;border:0;font-size:18px;padding:0 6px;flex:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🔐 Mon Authenticator</h1>
+    <div id="hbtn" class="row hide" style="flex:none">
+      <button id="bAdd" class="pri">+ Ajouter</button>
+      <button id="bMenu">⋯</button>
+    </div>
+  </header>
+
+  <div id="lock" class="card hide">
+    <div id="lockTitle" style="font-weight:600;margin-bottom:4px"></div>
+    <div id="lockHelp" class="mut"></div>
+    <label id="pwLabel">Mot de passe maître</label>
+    <input id="pw" type="password" autocomplete="off">
+    <div id="pw2w">
+      <label>Confirmer le mot de passe</label>
+      <input id="pw2" type="password" autocomplete="off">
+    </div>
+    <div class="row" style="margin-top:12px"><button id="bUnlock" class="pri"></button></div>
+    <div id="lockMsg" class="msg err"></div>
+    <div id="lockReset" class="hide" style="margin-top:14px">
+      <button id="bImportLock" class="lnk">Restaurer depuis une sauvegarde</button>
+    </div>
+  </div>
+
+  <div id="main" class="hide">
+    <div id="banner" class="banner hide"></div>
+    <input id="q" placeholder="Rechercher…" class="hide" style="margin-bottom:10px">
+    <div id="list"></div>
+    <div id="empty" class="center mut hide">Aucun compte pour l'instant.<br>Appuyez sur « + Ajouter ».</div>
+  </div>
+</div>
+
+<div id="modal" class="modal hide"><div id="mbody"></div></div>
+<div id="toast" class="toast hide"></div>
+
+<script>
+/* ============ CORE TOTP (testé contre RFC 6238) ============ */
+const B32='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+function b32decode(s){
+  s=s.replace(/[\s=-]/g,'').toUpperCase();
+  let bits='';
+  for(const c of s){const v=B32.indexOf(c);if(v<0)throw new Error('Clé invalide (caractère « '+c+' »)');bits+=v.toString(2).padStart(5,'0')}
+  const out=[];for(let i=0;i+8<=bits.length;i+=8)out.push(parseInt(bits.slice(i,i+8),2));
+  if(!out.length)throw new Error('Clé vide');
+  return new Uint8Array(out);
+}
+function b32encode(bytes){
+  let bits='',out='';
+  for(const b of bytes)bits+=b.toString(2).padStart(8,'0');
+  for(let i=0;i<bits.length;i+=5)out+=B32[parseInt(bits.slice(i,i+5).padEnd(5,'0'),2)];
+  return out;
+}
+async function totp(secret,{algo='SHA-1',digits=6,period=30}={},time=Date.now()){
+  const counter=Math.floor(time/1000/period);
+  const buf=new ArrayBuffer(8);const dv=new DataView(buf);
+  dv.setUint32(0,Math.floor(counter/4294967296));dv.setUint32(4,counter>>>0);
+  const key=await crypto.subtle.importKey('raw',b32decode(secret),{name:'HMAC',hash:algo},false,['sign']);
+  const h=new Uint8Array(await crypto.subtle.sign('HMAC',key,buf));
+  const o=h[h.length-1]&15;
+  const n=((h[o]&127)<<24|h[o+1]<<16|h[o+2]<<8|h[o+3])%(10**digits);
+  return String(n).padStart(digits,'0');
+}
+function parseOtpauth(uri){
+  const u=new URL(uri.trim());
+  if(u.protocol!=='otpauth:'||u.hostname!=='totp')throw new Error('Seuls les liens otpauth://totp/ sont pris en charge');
+  const label=decodeURIComponent(u.pathname.replace(/^\//,''));
+  let issuer=u.searchParams.get('issuer')||'',name=label;
+  if(label.includes(':')){const i=label.indexOf(':');if(!issuer)issuer=label.slice(0,i);name=label.slice(i+1)}
+  const a=(u.searchParams.get('algorithm')||'SHA1').toUpperCase().replace('SHA','SHA-').replace('SHA--','SHA-');
+  return{issuer:issuer.trim(),name:name.trim(),secret:u.searchParams.get('secret')||'',
+    algo:['SHA-1','SHA-256','SHA-512'].includes(a)?a:'SHA-1',
+    digits:parseInt(u.searchParams.get('digits')||'6')||6,period:parseInt(u.searchParams.get('period')||'30')||30};
+}
+/* Import Google Authenticator : otpauth-migration://offline?data=... (protobuf) */
+function pbParse(b){
+  const f=[];let p=0;
+  const vi=()=>{let r=0,s=1;for(;;){const c=b[p++];if(c===undefined)throw new Error('Données corrompues');r+=(c&127)*s;s*=128;if(!(c&128))return r}};
+  while(p<b.length){
+    const t=vi(),fn=Math.floor(t/8),wt=t&7;
+    if(wt===0)f.push([fn,vi()]);
+    else if(wt===2){const l=vi();f.push([fn,b.slice(p,p+l)]);p+=l}
+    else if(wt===1)p+=8;else if(wt===5)p+=4;else throw new Error('Format non pris en charge');
+  }
+  return f;
+}
+function parseMigration(uri){
+  const d=new URL(uri).searchParams.get('data');
+  if(!d)throw new Error('Lien de migration invalide');
+  const raw=Uint8Array.from(atob(d.replace(/ /g,'+').replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0));
+  const out=[];let skipped=0;
+  for(const [fn,v] of pbParse(raw)){
+    if(fn!==1)continue;
+    const o={algo:1,digits:1,type:2,name:'',issuer:'',secret:null};
+    for(const [k,x] of pbParse(v)){
+      if(k===1)o.secret=x;else if(k===2)o.name=dec.decode(x);else if(k===3)o.issuer=dec.decode(x);
+      else if(k===4)o.algo=x;else if(k===5)o.digits=x;else if(k===6)o.type=x;
+    }
+    const algo={0:'SHA-1',1:'SHA-1',2:'SHA-256',3:'SHA-512'}[o.algo];
+    if(!o.secret||o.type===1||!algo){skipped++;continue}
+    let name=o.name,issuer=o.issuer;
+    if(!issuer&&name.includes(':')){issuer=name.split(':')[0];name=name.slice(issuer.length+1)}
+    out.push({issuer:issuer.trim(),name:name.trim(),secret:b32encode(o.secret),algo,digits:o.digits===2?8:6,period:30});
+  }
+  return{accounts:out,skipped};
+}
+const enc=new TextEncoder(),dec=new TextDecoder();
+
+/* ============ CHIFFREMENT : clé de données (DEK) enveloppée par mot de passe ET clé de récupération ============ */
+const toB64=b=>btoa(String.fromCharCode(...new Uint8Array(b)));
+const fromB64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+const rnd=n=>crypto.getRandomValues(new Uint8Array(n));
+async function kek(secret,salt){
+  const base=await crypto.subtle.importKey('raw',enc.encode(secret),'PBKDF2',false,['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:310000,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+}
+async function wrap(k,bytes){const iv=rnd(12);return{iv:toB64(iv),d:toB64(await crypto.subtle.encrypt({name:'AES-GCM',iv},k,bytes))}}
+async function unwrap(k,w){return new Uint8Array(await crypto.subtle.decrypt({name:'AES-GCM',iv:fromB64(w.iv)},k,fromB64(w.d)))}
+const dekKey=bytes=>crypto.subtle.importKey('raw',bytes,'AES-GCM',false,['encrypt','decrypt']);
+const normRec=s=>s.replace(/[\s-]/g,'').toUpperCase();
+const newRec=()=>b32encode(rnd(20)); // 32 caractères, 160 bits
+const fmtRec=r=>r.match(/.{1,4}/g).join('-');
+
+/* ============ ÉTAT ============ */
+const LS='authenticator.vault.v2',LSET='authenticator.settings',LF='authenticator.fails';
+let dekBytes=null,dek=null,M=null,accounts=[],lastAct=Date.now(),memVault=null,modalLocked=false;
+const $=id=>document.getElementById(id);
+const lsGet=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
+const lsSet=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
+const readVault=()=>lsGet(LS)||memVault;
+function writeVault(s){memVault=s;lsSet(LS,s)}
+let settings=Object.assign({autolock:2,clip:20,lastBackup:0,changes:0},JSON.parse(lsGet(LSET)||'{}'));
+const saveSettings=()=>lsSet(LSET,JSON.stringify(settings));
+async function buildBlob(){
+  const iv=rnd(12);
+  const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},dek,enc.encode(JSON.stringify({accounts})));
+  return JSON.stringify({v:2,...M,iv:toB64(iv),data:toB64(ct)});
+}
+async function persist(changed=true){
+  writeVault(await buildBlob());
+  if(changed){settings.changes++;saveSettings()}
+}
+function toast(t){const e=$('toast');e.textContent=t;e.classList.remove('hide');clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.add('hide'),2000)}
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const show=(id,on)=>$(id).classList.toggle('hide',!on);
+const uid=()=>Array.from(rnd(8),b=>b.toString(16).padStart(2,'0')).join('');
+function download(name,text){
+  try{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:'text/plain'}));a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),3000);return true}catch(e){return false}
+}
+async function copyText(t){try{await navigator.clipboard.writeText(t);return true}catch(e){return false}}
+
+/* Coffre : création / ouverture / changement de secrets */
+async function createVault(pw,accs){
+  dekBytes=rnd(32);dek=await dekKey(dekBytes);
+  const salt=rnd(16),rsalt=rnd(16),rec=newRec();
+  M={salt:toB64(salt),rsalt:toB64(rsalt)};
+  M.wp=await wrap(await kek(pw,salt),dekBytes);
+  M.wr=await wrap(await kek(rec,rsalt),dekBytes);
+  accounts=accs;await persist(false);
+  return rec;
+}
+async function openBlob(blob,secret){
+  if(blob.v===1){ // ancien format (version aperçu) : le mot de passe chiffre directement les données
+    const k=await kek(secret,fromB64(blob.salt));
+    try{const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:fromB64(blob.iv)},k,fromB64(blob.data));return{legacy:true,accounts:JSON.parse(dec.decode(pt)).accounts}}
+    catch(e){throw new Error('Mot de passe incorrect.')}
+  }
+  let bytes=null,how=null;
+  try{bytes=await unwrap(await kek(secret,fromB64(blob.salt)),blob.wp);how='pw'}catch(e){}
+  if(!bytes){try{bytes=await unwrap(await kek(normRec(secret),fromB64(blob.rsalt)),blob.wr);how='rec'}catch(e){}}
+  if(!bytes)throw new Error('Mot de passe ou clé de récupération incorrect.');
+  const k=await dekKey(bytes);
+  const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:fromB64(blob.iv)},k,fromB64(blob.data));
+  return{bytes,k,how,accounts:JSON.parse(dec.decode(pt)).accounts,
+    meta:{salt:blob.salt,wp:blob.wp,rsalt:blob.rsalt,wr:blob.wr}};
+}
+async function setPassword(pw){
+  const salt=rnd(16);M.salt=toB64(salt);M.wp=await wrap(await kek(pw,salt),dekBytes);await persist(false);
+}
+async function regenRecovery(){
+  const rsalt=rnd(16),rec=newRec();M.rsalt=toB64(rsalt);M.wr=await wrap(await kek(rec,rsalt),dekBytes);await persist(false);return rec;
+}
+
+/* ============ VERROUILLAGE ============ */
+const failInfo=()=>{try{return JSON.parse(lsGet(LF))||{n:0,until:0}}catch(e){return{n:0,until:0}}};
+function lockAll(){
+  dek=null;dekBytes=null;M=null;accounts=[];state.clear();stopCam();closeModal(true);
+  show('main',false);show('hbtn',false);show('lock',true);
+  const has=!!readVault();
+  $('lockTitle').textContent=has?'Déverrouiller':'Créer votre coffre';
+  $('lockHelp').textContent=has?'Mot de passe oublié ? Saisissez à la place votre clé de récupération.':'Choisissez un mot de passe maître (12 caractères ou plus recommandé). Vous recevrez ensuite une clé de récupération à conserver.';
+  $('pwLabel').textContent=has?'Mot de passe maître ou clé de récupération':'Mot de passe maître';
+  $('bUnlock').textContent=has?'Déverrouiller':'Créer le coffre';
+  show('pw2w',!has);show('lockReset',true);
+  $('pw').value='';$('pw2').value='';$('lockMsg').textContent='';
+}
+$('bUnlock').onclick=async()=>{
+  const pw=$('pw').value,has=!!readVault(),m=$('lockMsg');m.className='msg err';m.textContent='';
+  if(!pw){m.textContent='Entrez un mot de passe.';return}
+  const f=failInfo();
+  if(has&&Date.now()<f.until){m.textContent='Trop d\'essais. Réessayez dans '+Math.ceil((f.until-Date.now())/1000)+' s.';return}
+  $('bUnlock').disabled=true;m.className='msg mut';m.textContent='Vérification…';
+  try{
+    if(has){
+      let r;
+      try{r=await openBlob(JSON.parse(readVault()),pw)}
+      catch(e){const n=f.n+1;lsSet(LF,JSON.stringify({n,until:n>=3?Date.now()+Math.min(300,5*2**(n-3))*1000:0}));throw e}
+      lsSet(LF,JSON.stringify({n:0,until:0}));
+      if(r.legacy)throw new Error('Format obsolète : utilisez « Restaurer depuis une sauvegarde ».');
+      dekBytes=r.bytes;dek=r.k;M=r.meta;accounts=r.accounts;lastAct=Date.now();
+      show('lock',false);startMain();
+      if(r.how==='rec')forceNewPassword();
+    }else{
+      if(pw.length<8)throw new Error('Au moins 8 caractères.');
+      if(pw!==$('pw2').value)throw new Error('Les mots de passe ne correspondent pas.');
+      const rec=await createVault(pw,[]);lastAct=Date.now();
+      show('lock',false);startMain();recoveryModal(rec,true);
+    }
+    m.textContent='';
+  }catch(e){m.className='msg err';m.textContent=e.message}
+  $('bUnlock').disabled=false;
+};
+$('pw').addEventListener('keydown',e=>{if(e.key==='Enter'&&readVault())$('bUnlock').click()});
+$('bImportLock').onclick=()=>importModal(true);
+
+function forceNewPassword(){
+  openModal(`<b>Définir un nouveau mot de passe</b>
+   <p class="mut">Vous avez utilisé la clé de récupération. Choisissez un nouveau mot de passe maître.</p>
+   <label>Nouveau mot de passe</label><input id="np1" type="password" autocomplete="off">
+   <label>Confirmer</label><input id="np2" type="password" autocomplete="off">
+   <div class="row" style="margin-top:12px"><button id="npgo" class="pri">Enregistrer</button></div><div id="m" class="msg err"></div>`,true);
+  $('npgo').onclick=async()=>{
+    try{const a=$('np1').value;if(a.length<8)throw new Error('Au moins 8 caractères.');if(a!==$('np2').value)throw new Error('Les mots de passe ne correspondent pas.');
+      await setPassword(a);closeModal(true);toast('Mot de passe changé')}catch(e){$('m').textContent=e.message}
+  };
+}
+function recoveryModal(rec,first){
+  const shown=fmtRec(rec);
+  openModal(`<b>Votre clé de récupération</b>
+   <p class="mut">Elle permet de rouvrir le coffre si vous oubliez le mot de passe. <b>Elle ne sera plus affichée.</b> Conservez-la hors de cet appareil : gestionnaire de mots de passe, papier dans un lieu sûr.</p>
+   <div class="rec">${shown}</div>
+   <div class="row"><button id="rc">Copier</button><button id="rd">Télécharger</button></div>
+   <label style="display:flex;gap:8px;align-items:center;color:var(--tx)"><input type="checkbox" id="rk"> Je l'ai enregistrée en lieu sûr</label>
+   <div class="row" style="margin-top:12px"><button id="rgo" class="pri" disabled>Continuer</button></div>`,true);
+  $('rc').onclick=async()=>toast(await copyText(shown)?'Copiée':'Copie impossible : notez-la à la main');
+  $('rd').onclick=()=>toast(download('authenticator-cle-de-recuperation.txt','Clé de récupération Mon Authenticator\n'+shown+'\n')?'Fichier envoyé':'Téléchargement indisponible');
+  $('rk').onchange=e=>$('rgo').disabled=!e.target.checked;
+  $('rgo').onclick=()=>closeModal(true);
+}
+
+/* ============ LISTE ============ */
+const state=new Map();
+function startMain(){show('main',true);show('hbtn',true);renderList();navigator.storage&&navigator.storage.persist&&navigator.storage.persist().catch(()=>{})}
+function banner(){
+  const b=$('banner'),days=(Date.now()-settings.lastBackup)/864e5;
+  const need=accounts.length&&(settings.lastBackup===0||(settings.changes>0&&days>7)||settings.changes>=5);
+  show('banner',!!need);
+  if(need){b.innerHTML=`⚠️ ${settings.lastBackup?'Des changements ne sont pas sauvegardés.':'Aucune sauvegarde pour l\'instant.'} <button id="bnb" class="lnk">Sauvegarder</button>`;$('bnb').onclick=backupModal}
+}
+function renderList(){
+  const q=$('q').value.trim().toLowerCase();
+  show('q',accounts.length>4);banner();
+  const list=accounts.filter(a=>!q||(a.issuer+' '+a.name).toLowerCase().includes(q)).sort((a,b)=>(b.fav?1:0)-(a.fav?1:0));
+  show('empty',!accounts.length);
+  $('list').innerHTML=list.map(a=>`
+   <div class="card"><div class="acc" data-copy="${a.id}">
+      <div style="min-width:0">
+        <div class="i">${a.fav?'★ ':''}${esc(a.issuer||a.name)}</div>
+        <div class="n">${a.issuer?esc(a.name):''}</div>
+        <div class="code" id="c-${a.id}">······</div>
+      </div>
+      <svg class="ring" viewBox="0 0 36 36"><circle class="bg" cx="18" cy="18" r="15"/><circle class="fg" id="r-${a.id}" cx="18" cy="18" r="15" stroke-dasharray="94.25" stroke-dashoffset="0"/></svg>
+   </div></div>`).join('');
+  state.clear();tick();
+}
+$('q').oninput=renderList;
+let pressT=null,longDone=false;
+$('list').addEventListener('pointerdown',e=>{const el=e.target.closest('[data-copy]');if(!el)return;longDone=false;pressT=setTimeout(()=>{longDone=true;editModal(el.dataset.copy)},650)});
+['pointerup','pointerleave','pointercancel'].forEach(t=>$('list').addEventListener(t,()=>clearTimeout(pressT)));
+$('list').addEventListener('contextmenu',e=>{if(e.target.closest('[data-copy]'))e.preventDefault()});
+$('list').onclick=async e=>{
+  const el=e.target.closest('[data-copy]');if(!el||longDone)return;
+  const s=state.get(el.dataset.copy);if(!s||!s.code)return;
+  if(await copyText(s.code)){
+    toast(settings.clip?`Code copié (effacé dans ${settings.clip} s)`:'Code copié');
+    if(settings.clip){clearTimeout(copyText.t);copyText.t=setTimeout(()=>copyText(' '),settings.clip*1000)}
+  }else toast('Copie impossible : recopiez à la main');
+};
+async function tick(){
+  if(!dek)return;
+  if(settings.autolock&&Date.now()-lastAct>settings.autolock*60000){lockAll();return}
+  const now=Date.now();
+  for(const a of accounts){
+    const c=$('c-'+a.id);if(!c)continue;
+    const p=a.period||30,counter=Math.floor(now/1000/p),s=state.get(a.id),left=p-((now/1000)%p);
+    const r=$('r-'+a.id);if(r)r.style.strokeDashoffset=String(94.25*(1-left/p));
+    c.classList.toggle('low',left<=5);
+    if(!s||s.counter!==counter){
+      try{const code=await totp(a.secret,{algo:a.algo,digits:a.digits,period:p},now);
+        state.set(a.id,{counter,code});c.textContent=code.length===6?code.slice(0,3)+' '+code.slice(3):code}
+      catch(e){c.textContent='Erreur'}
+    }
+  }
+}
+setInterval(tick,250);
+['pointerdown','keydown','touchstart'].forEach(t=>document.addEventListener(t,()=>{lastAct=Date.now()},true));
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&dek&&settings.autolock)lastAct=Math.min(lastAct,Date.now()-Math.max(0,settings.autolock*60000-30000))});
+
+/* ============ MODALES ============ */
+function openModal(html,locked=false){modalLocked=locked;$('mbody').innerHTML=html;show('modal',true)}
+function closeModal(force){if(modalLocked&&!force)return;modalLocked=false;stopCam();show('modal',false);$('mbody').innerHTML=''}
+$('modal').onclick=e=>{if(e.target.id==='modal')closeModal()};
+const head=t=>`<div class="row" style="margin-bottom:8px"><b style="flex:1">${t}</b><button id="x" style="flex:none">✕</button></div>`;
+
+/* --- Lecture de QR --- */
+const JSQR_CDN='https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js';
+function loadScript(u){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=u;s.onload=res;s.onerror=rej;document.head.appendChild(s)})}
+loadScript('jsQR.js').catch(()=>loadScript(JSQR_CDN)).catch(()=>{});
+async function readQR(cv){
+  if('BarcodeDetector' in window){try{const r=await new BarcodeDetector({formats:['qr_code']}).detect(cv);if(r[0])return r[0].rawValue}catch(e){}}
+  if(typeof jsQR==='function'){const im=cv.getContext('2d').getImageData(0,0,cv.width,cv.height);const r=jsQR(im.data,im.width,im.height);if(r)return r.data}
+  return null;
+}
+let camStream=null;
+function stopCam(){if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null}}
+
+function addModal(){
+  openModal(head('Ajouter un compte')+`
+   <div class="tabs"><button id="t1" class="on">Clé secrète</button><button id="t3">Caméra</button><button id="t2">Image / lien</button></div>
+   <div id="p1">
+     <label>Service (ex. GitHub)</label><input id="f-iss">
+     <label>Compte (ex. moi@email.com)</label><input id="f-name">
+     <label>Clé secrète (base32)</label><input id="f-sec" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="JBSW Y3DP EHPK 3PXP">
+     <details style="margin-top:10px"><summary class="mut">Options avancées</summary>
+       <div class="row"><div><label>Algorithme</label><select id="f-alg"><option>SHA-1</option><option>SHA-256</option><option>SHA-512</option></select></div>
+       <div><label>Chiffres</label><select id="f-dig"><option>6</option><option>7</option><option>8</option></select></div>
+       <div><label>Période (s)</label><input id="f-per" type="number" value="30" min="10"></div></div>
+     </details>
+     <div class="row" style="margin-top:14px"><button id="f-save" class="pri">Enregistrer</button></div>
+   </div>
+   <div id="p3" class="hide">
+     <p class="mut">Cadrez le QR code. Fonctionne aussi avec l'export de Google Authenticator (plusieurs comptes d'un coup).</p>
+     <video id="vid" playsinline muted></video>
+     <div class="row" style="margin-top:10px"><button id="camgo" class="pri">Démarrer la caméra</button></div>
+   </div>
+   <div id="p2" class="hide">
+     <p class="mut">Importez une capture d'écran du QR code, ou collez un lien <code>otpauth://…</code> ou <code>otpauth-migration://…</code>.</p>
+     <input id="f-file" type="file" accept="image/*">
+     <label>ou lien</label><textarea id="f-uri" rows="3" spellcheck="false"></textarea>
+     <div class="row" style="margin-top:12px"><button id="f-uri-go" class="pri">Lire le lien</button></div>
+   </div>
+   <div id="m" class="msg err"></div>`);
+  $('x').onclick=()=>closeModal();
+  const tabs={t1:'p1',t3:'p3',t2:'p2'};
+  for(const t in tabs)$(t).onclick=()=>{stopCam();for(const u in tabs){$(u).className=u===t?'on':'';show(tabs[u],u===t)}$('m').textContent=''};
+  const msg=(t,ok)=>{$('m').className='msg '+(ok?'ok':'err');$('m').textContent=t};
+  const fill=o=>{$('f-iss').value=o.issuer;$('f-name').value=o.name;$('f-sec').value=o.secret;$('f-alg').value=o.algo;$('f-dig').value=String(o.digits);$('f-per').value=o.period;$('t1').click();msg('Informations lues — vérifiez puis enregistrez.',true)};
+  const exists=a=>accounts.some(x=>x.secret===a.secret&&x.issuer===a.issuer&&x.name===a.name);
+  async function onScan(t){
+    try{
+      if(t.startsWith('otpauth-migration://')){
+        const {accounts:list,skipped}=parseMigration(t);let n=0;
+        for(const a of list)if(!exists(a)){accounts.push({...a,id:uid()});n++}
+        if(!list.length)throw new Error('Aucun compte TOTP trouvé dans ce QR code.');
+        await persist();closeModal();renderList();toast(n+' compte(s) importé(s)'+(skipped?` (${skipped} ignoré(s))`:''));
+      }else fill(parseOtpauth(t));
+    }catch(e){msg(e.message)}
+  }
+  $('f-uri-go').onclick=()=>onScan($('f-uri').value.trim());
+  $('f-file').onchange=async ev=>{
+    const f=ev.target.files[0];if(!f)return;
+    try{
+      const bmp=await createImageBitmap(f);const cv=document.createElement('canvas');cv.width=bmp.width;cv.height=bmp.height;
+      cv.getContext('2d').drawImage(bmp,0,0);
+      const t=await readQR(cv);if(!t)throw new Error('QR code non détecté. Essayez une capture plus nette, ou saisissez la clé.');
+      onScan(t);
+    }catch(e){msg(e.message)}
+  };
+  $('camgo').onclick=async()=>{
+    try{
+      if(!navigator.mediaDevices)throw new Error('Caméra indisponible ici (page non sécurisée ou environnement restreint).');
+      camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+      const v=$('vid');v.srcObject=camStream;await v.play();msg('Recherche du QR code…',true);
+      const cv=document.createElement('canvas');
+      const loop=async()=>{
+        if(!camStream)return;
+        try{if(v.videoWidth){cv.width=v.videoWidth;cv.height=v.videoHeight;cv.getContext('2d').drawImage(v,0,0);const t=await readQR(cv);if(t){stopCam();onScan(t);return}}}catch(e){}
+        setTimeout(loop,200);
+      };loop();
+    }catch(e){stopCam();msg(e.name==='NotAllowedError'?'Accès à la caméra refusé.':e.message)}
+  };
+  $('f-save').onclick=async()=>{
+    const secret=$('f-sec').value.replace(/\s/g,'').toUpperCase();
+    const a={id:uid(),issuer:$('f-iss').value.trim(),name:$('f-name').value.trim(),secret,algo:$('f-alg').value,digits:+$('f-dig').value,period:+$('f-per').value||30};
+    try{
+      if(!a.issuer&&!a.name)throw new Error('Donnez un nom au compte.');
+      await totp(secret,a);
+      if(exists(a))throw new Error('Ce compte existe déjà.');
+      accounts.push(a);await persist();closeModal();renderList();toast('Compte ajouté');
+    }catch(e){msg(e.message)}
+  };
+}
+$('bAdd').onclick=addModal;
+
+function editModal(id){
+  const a=accounts.find(x=>x.id===id);if(!a)return;
+  openModal(head('Modifier')+`
+   <label>Service</label><input id="e-iss" value="${esc(a.issuer)}">
+   <label>Compte</label><input id="e-name" value="${esc(a.name)}">
+   <label style="display:flex;gap:8px;align-items:center;color:var(--tx)"><input type="checkbox" id="e-fav" ${a.fav?'checked':''}> ★ Favori (affiché en premier)</label>
+   <div class="row" style="margin-top:14px"><button id="e-save" class="pri">Enregistrer</button><button id="e-del" class="dng">Supprimer</button></div>
+   <div id="m" class="msg"></div>`);
+  $('x').onclick=()=>closeModal();
+  $('e-save').onclick=async()=>{a.issuer=$('e-iss').value.trim();a.name=$('e-name').value.trim();a.fav=$('e-fav').checked;await persist();closeModal();renderList()};
+  let armed=false;
+  $('e-del').onclick=async()=>{
+    if(!armed){armed=true;$('e-del').textContent='Confirmer la suppression';$('m').className='msg err';$('m').textContent='Assurez-vous d\'avoir désactivé la 2FA côté service ou de pouvoir y accéder autrement.';return}
+    accounts=accounts.filter(x=>x.id!==id);await persist();closeModal();renderList();toast('Supprimé');
+  };
+}
+
+$('bMenu').onclick=()=>{
+  openModal(head('Menu')+`
+   <button id="mb" style="width:100%;margin-bottom:8px">Sauvegarder (fichier chiffré)</button>
+   <button id="mi" style="width:100%;margin-bottom:8px">Importer une sauvegarde</button>
+   <button id="ms" style="width:100%;margin-bottom:8px">Réglages et sécurité</button>
+   <button id="ml" style="width:100%;margin-bottom:8px">Verrouiller maintenant</button>
+   <p class="mut">Appui long sur un compte pour le modifier ou le supprimer.</p>`);
+  $('x').onclick=()=>closeModal();$('ml').onclick=lockAll;$('mi').onclick=()=>importModal(false);$('mb').onclick=backupModal;$('ms').onclick=settingsModal;
+};
+async function backupModal(){
+  const blob=await buildBlob(),name=`authenticator-sauvegarde-${new Date().toISOString().slice(0,10)}.txt`;
+  const done=()=>{settings.lastBackup=Date.now();settings.changes=0;saveSettings();banner()};
+  openModal(head('Sauvegarde chiffrée')+`
+   <p class="mut">Le fichier est chiffré : il s'ouvre avec votre mot de passe ou votre clé de récupération. Rangez-le à au moins deux endroits (Drive, e-mail à vous-même, clé USB).</p>
+   <div class="row"><button id="bd" class="pri">Télécharger le fichier</button><button id="bc">Copier le texte</button></div>
+   <textarea id="bk" rows="4" readonly spellcheck="false" style="margin-top:10px">${esc(blob)}</textarea><div id="m" class="msg"></div>`);
+  $('x').onclick=()=>closeModal();
+  $('bd').onclick=()=>{if(download(name,blob)){done();$('m').className='msg ok';$('m').textContent='Fichier envoyé vers vos téléchargements.'}else{$('m').className='msg err';$('m').textContent='Téléchargement impossible ici : utilisez « Copier le texte ».'}};
+  $('bc').onclick=async()=>{if(await copyText(blob)){done();toast('Copié')}else{$('bk').select();toast('Sélectionné — copiez manuellement')}};
+}
+function importModal(fromLock){
+  openModal(head('Importer une sauvegarde')+`
+   <label>Fichier de sauvegarde</label><input id="i-file" type="file" accept=".txt,.json,text/plain">
+   <label>ou texte de la sauvegarde</label><textarea id="i-bk" rows="4" spellcheck="false"></textarea>
+   <label>Mot de passe maître (ou clé de récupération) de cette sauvegarde</label><input id="i-pw" type="password" autocomplete="off">
+   ${fromLock?'<p class="mut">Cela remplacera le coffre actuellement stocké sur cet appareil.</p>':''}
+   <div class="row" style="margin-top:12px"><button id="i-go" class="pri">Importer</button></div><div id="m" class="msg err"></div>`);
+  $('x').onclick=()=>closeModal();
+  $('i-file').onchange=async e=>{const f=e.target.files[0];if(f)$('i-bk').value=(await f.text()).trim()};
+  $('i-go').onclick=async()=>{
+    try{
+      const blob=JSON.parse($('i-bk').value.trim()),pw=$('i-pw').value;
+      const r=await openBlob(blob,pw);
+      if(fromLock){
+        if(r.legacy){const rec=await createVault(pw,r.accounts);closeModal(true);show('lock',false);startMain();recoveryModal(rec,true);return}
+        dekBytes=r.bytes;dek=r.k;M=r.meta;accounts=r.accounts;await persist(false);lastAct=Date.now();
+        closeModal(true);show('lock',false);startMain();toast('Coffre restauré');
+        if(r.how==='rec')forceNewPassword();
+      }else{
+        let n=0;for(const a of r.accounts)if(!accounts.some(x=>x.secret===a.secret&&x.issuer===a.issuer&&x.name===a.name)){accounts.push({...a,id:uid()});n++}
+        await persist();closeModal();renderList();toast(n+' compte(s) importé(s)');
+      }
+    }catch(e){$('m').textContent=e instanceof SyntaxError?'Texte de sauvegarde invalide.':e.message}
+  };
+}
+function settingsModal(){
+  const sel=(id,opts,cur)=>`<select id="${id}">${opts.map(([v,l])=>`<option value="${v}" ${v==cur?'selected':''}>${l}</option>`).join('')}</select>`;
+  openModal(head('Réglages et sécurité')+`
+   <label>Verrouillage automatique</label>${sel('s-al',[[1,'1 minute'],[2,'2 minutes'],[5,'5 minutes'],[10,'10 minutes'],[0,'Jamais (déconseillé)']],settings.autolock)}
+   <label>Effacer le presse-papiers après copie</label>${sel('s-cl',[[10,'10 secondes'],[20,'20 secondes'],[60,'60 secondes'],[0,'Ne pas effacer']],settings.clip)}
+   <hr style="border:0;border-top:1px solid var(--bd);margin:16px 0">
+   <button id="s-pw" style="width:100%;margin-bottom:8px">Changer le mot de passe maître</button>
+   <button id="s-rc" style="width:100%;margin-bottom:8px">Générer une nouvelle clé de récupération</button>
+   <div id="m" class="msg"></div>`);
+  $('x').onclick=()=>closeModal();
+  $('s-al').onchange=e=>{settings.autolock=+e.target.value;saveSettings()};
+  $('s-cl').onchange=e=>{settings.clip=+e.target.value;saveSettings()};
+  $('s-pw').onclick=()=>{
+    openModal(head('Changer le mot de passe')+`<label>Nouveau mot de passe</label><input id="np1" type="password" autocomplete="off"><label>Confirmer</label><input id="np2" type="password" autocomplete="off"><div class="row" style="margin-top:12px"><button id="npgo" class="pri">Enregistrer</button></div><div id="m" class="msg err"></div>`);
+    $('x').onclick=()=>closeModal();
+    $('npgo').onclick=async()=>{try{const a=$('np1').value;if(a.length<8)throw new Error('Au moins 8 caractères.');if(a!==$('np2').value)throw new Error('Les mots de passe ne correspondent pas.');await setPassword(a);settings.changes++;saveSettings();closeModal();toast('Mot de passe changé — refaites une sauvegarde')}catch(e){$('m').textContent=e.message}};
+  };
+  $('s-rc').onclick=async()=>{const rec=await regenRecovery();settings.changes++;saveSettings();recoveryModal(rec,false)};
+}
+
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+lockAll();
+</script>
+</body>
+</html>
